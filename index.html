@@ -1,76 +1,235 @@
-<!DOCTYPE html>
-<html lang="hi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SGCBILL - Transport Invoice</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @media print { .no-print { display: none; } }
-    </style>
-</head>
-<body class="bg-gray-100 p-2 md:p-10">
-    <div class="max-w-4xl mx-auto bg-white p-6 shadow-xl border-t-8 border-blue-600">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold text-blue-700">SGC Transport</h1>
-            <button onclick="window.print()" class="no-print bg-green-500 text-white px-4 py-2 rounded">Print Bill</button>
-        </div>
+import streamlit as st
+import pandas as pd
+import datetime
 
-        <div class="no-print grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 bg-blue-50 p-4 rounded">
-            <input type="text" id="truckNo" placeholder="गाड़ी नंबर" class="border p-2">
-            <input type="text" id="from" placeholder="कहाँ से" class="border p-2">
-            <input type="text" id="to" placeholder="कहाँ तक" class="border p-2">
-            <input type="number" id="amount" placeholder="कुल भाड़ा (Amount)" class="border p-2">
-            <button onclick="generateBill()" class="col-span-full bg-blue-600 text-white py-2 rounded font-bold">Bill Generate Karein</button>
-        </div>
+# --- CONFIGURATION & STYLING ---
+st.set_page_config(page_title="SGC Smart Billing", page_icon="🧡", layout="wide")
 
-        <div id="billSection" class="border-2 border-gray-300 p-6">
-            <div class="text-center mb-6 border-bottom">
-                <h2 class="text-2xl font-bold uppercase">Goods Receipt / बिल्टी</h2>
-                <p>Address: Lucknow, Uttar Pradesh | Mobile: +91 XXXXXXXX</p>
-            </div>
+# Custom CSS for UI Match
+# Hum code mein seedhe interface aur colors ko image jaisa look de rahe hain.
+def apply_custom_styles():
+    st.markdown(
+        """
+        <style>
+            /* Left Sidebar Styling */
+            [data-testid="stSidebar"] {
+                background-color: #fcfbf9; /* Off-white / Cream background */
+                border-right: 1px solid #e0e0e0;
+            }
+            [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+                font-size: 1.1rem;
+                font-weight: 500;
+            }
+            .sidebar-logo {
+                background-color: #ff914d; /* Orange box */
+                color: white;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 5px;
+                text-align: center;
+                display: inline-block;
+                margin-right: 10px;
+            }
+            .sidebar-footer {
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                color: #888;
+                font-size: 0.8rem;
+            }
+            /* Main Content Buttons & Header */
+            .stButton>button {
+                background-color: #ff914d;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 10px 20px;
+            }
+            .stButton>button:hover {
+                background-color: #e67e22;
+                color: white;
+            }
+            h1 {
+                font-weight: bold;
+            }
+            /* Live Calculation Card */
+            .calc-card {
+                background-color: #fffaf0; /* Pale orange background */
+                border: 1px solid #ffcc80;
+                padding: 20px;
+                border-radius: 10px;
+            }
+            .calc-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 8px;
+            }
+            .grand-total {
+                font-size: 1.5rem;
+                font-weight: bold;
+            }
+            .grand-total-val {
+                color: #ff914d; /* Orange total */
+            }
+            /* Made with Replit badge placeholder (bottom right) */
+            .replit-badge {
+                position: fixed;
+                bottom: 10px;
+                right: 10px;
+                background-color: rgba(0,0,0,0.5);
+                color: white;
+                padding: 5px 10px;
+                border-radius: 20px;
+                font-size: 0.8rem;
+                pointer-events: none;
+            }
+        </style>
+        """,
+        unsafe_allow_stdio=False,
+    )
+
+apply_custom_styles()
+
+# --- DUMMY DATA FOR DEMO ---
+# Actual app mein yeh data database se ayega (e.g., PostgreSQL).
+TOWN_RATES_DATA = {
+    "Kadipur": 75,
+    "Kanpur": 100,
+    "Lucknow": 110,
+    "Patti": 95,
+    "Sultanpur": 80,
+}
+
+# --- SIDEBAR NAVIGATION (Similar to image_2.png) ---
+with st.sidebar:
+    st.markdown('<span class="sidebar-logo">SGC</span> Smart Billing', unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Custom navigation buttons with icons
+    if st.button("🏠 Dashboard", key="nav_dash", use_container_width=True): st.session_state.page = "dashboard"
+    if st.button("📄 All Bills", key="nav_bills", use_container_width=True): st.session_state.page = "all_bills"
+    if st.button("➕ New Bill", key="nav_new", use_container_width=True): st.session_state.page = "new_bill"
+    if st.button("📍 Town Rates", key="nav_towns", use_container_width=True): st.session_state.page = "town_rates"
+    
+    st.markdown("---")
+    st.markdown('<div class="sidebar-footer">Singh Golden Carrier</div>', unsafe_allow_html=True)
+
+# Initialize session state for navigation
+if "page" not in st.session_state:
+    st.session_state.page = "new_bill"  # Default page to show
+
+# Initialize dummy bill storage for demo
+if "dummy_bills" not in st.session_state:
+    st.session_state.dummy_bills = [
+        {"Invoice No": 260200, "Date": "06/05/2026", "LR No": 10321, "Town": "Kanpur", "Nugs": 12, "Total": "₹1,460"},
+    ]
+
+
+# --- MAIN PAGE CONTENT LOGIC ---
+current_page = st.session_state.page
+
+if current_page == "new_bill":
+    # (Based on image_0.png)
+    st.title("New Bill")
+    st.caption("Generate a new freight bill")
+    st.write("Current Date: 06-May-2026") # Mimic fixed date for snapshot feel
+
+    # Create two columns like the image layout
+    col1, col2 = st.columns([2, 1], gap="large")
+
+    with col1:
+        # Form Sections
+        with st.container():
+            st.markdown("**INVOICE INFO**")
+            invoice_num = st.text_input("Invoice Number", "e.g. INV-2023-001")
+            invoice_date = st.date_input("Invoice Date", value=datetime.date(2026, 5, 6))
+
+        st.markdown("---")
+        
+        with st.container():
+            st.markdown("**LR INFO**")
+            lr_num = st.text_input("LR Number", "e.g. LR-4091")
+            lr_date = st.date_input("LR Date", value=datetime.date(2026, 5, 6))
+
+        st.markdown("---")
+        
+        with st.container():
+            st.markdown("**FREIGHT DETAILS**")
+            destination_town = st.selectbox("Destination Town", ["Select a town"] + list(TOWN_RATES_DATA.keys()))
+            num_cases = st.number_input("Number of Cases (Nugs)", min_value=1, value=1)
             
-            <div class="grid grid-cols-2 gap-10 mb-6">
-                <div>
-                    <p><strong>Truck No:</strong> <span id="dispTruck">-</span></p>
-                    <p><strong>From:</strong> <span id="dispFrom">-</span></p>
-                </div>
-                <div class="text-right">
-                    <p><strong>Date:</strong> <span id="dispDate">--/--/----</span></p>
-                    <p><strong>To:</strong> <span id="dispTo">-</span></p>
-                </div>
-            </div>
+            door_delivery = st.checkbox("Door Delivery (Adds ₹20 per nug)")
+            
+            st.button("Save New Bill")
 
-            <table class="w-full border-collapse border border-gray-400 mb-6">
-                <thead>
-                    <tr class="bg-gray-100">
-                        <th class="border border-gray-400 p-2">Description</th>
-                        <th class="border border-gray-400 p-2">Amount (₹)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td class="border border-gray-400 p-4">Transport Freight Charges</td>
-                        <td class="border border-gray-400 p-4 text-right" id="dispAmount">0.00</td>
-                    </tr>
-                </tbody>
-            </table>
+    with col2:
+        # Live Calculation Card (Right sidebar of the main area)
+        with st.container():
+            st.markdown('<div class="calc-card">', unsafe_allow_html=True)
+            st.subheader("Live Calculation")
+            st.markdown("---")
+            
+            # Logic based on dummy data
+            town_selected = destination_town if destination_town != "Select a town" else "—"
+            rate_val = TOWN_RATES_DATA.get(destination_town, 0)
+            base_freight = rate_val * num_cases
+            
+            door_delivery_charges = (num_cases * 20) if door_delivery else 0
+            lr_charges = 20 # fixed in image
+            
+            grand_total = base_freight + door_delivery_charges + lr_charges
+            
+            # UI display for calculation
+            st.markdown(f'<div class="calc-row"><span>Town</span><span>{town_selected}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="calc-row"><span>Rate</span><span>₹{rate_val} / nug</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="calc-row"><span>Quantity</span><span>{num_cases} nugs</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="calc-row"><span>Base Freight</span><span>₹{base_freight:,}</span></div>', unsafe_allow_html=True)
+            if door_delivery:
+                st.markdown(f'<div class="calc-row"><span>Door Delivery</span><span>₹{door_delivery_charges:,}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="calc-row"><span>LR Charges</span><span>₹{lr_charges}</span></div>', unsafe_allow_html=True)
+            st.markdown("---")
+            st.markdown(f'<div class="calc-row grand-total"><span>Grand Total</span><span class="grand-total-val">₹{grand_total:,}</span></div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            <div class="flex justify-between mt-10">
-                <div class="text-center border-t border-black w-32">Driver Sign</div>
-                <div class="text-center border-t border-black w-32">For SGC Transport</div>
-            </div>
-        </div>
-    </div>
 
-    <script>
-        function generateBill() {
-            document.getElementById('dispTruck').innerText = document.getElementById('truckNo').value;
-            document.getElementById('dispFrom').innerText = document.getElementById('from').value;
-            document.getElementById('dispTo').innerText = document.getElementById('to').value;
-            document.getElementById('dispAmount').innerText = '₹' + document.getElementById('amount').value;
-            document.getElementById('dispDate').innerText = new Date().toLocaleDateString();
-        }
-    </script>
-</body>
-</html>
+elif current_page == "all_bills":
+    # (Based on image_3.png)
+    col_title, col_btns = st.columns([4, 1])
+    with col_title: st.title("All Bills")
+    with col_btns:
+        st.button("📥 Download CSV")
+        if st.button("➕ New Bill", key="btn_new_bill_all"): st.session_state.page = "new_bill"
+
+    # Display dummy bill data in a table
+    if st.session_state.dummy_bills:
+        df_bills = pd.DataFrame(st.session_state.dummy_bills)
+        st.dataframe(df_bills, use_container_width=True, hide_index=True)
+        # Adding simple text icons for edit/delete to mimic image
+        # Actual edit/delete functionality requires row-level interactions or custom CSS tables.
+        st.caption("*Icons in image (✏️ 🗑️) are placeholder Actions in this demo.*")
+    else:
+        st.warning("No bills generated yet.")
+
+elif current_page == "town_rates":
+    # (Based on image_1.png)
+    col_title, col_btns = st.columns([4, 1])
+    with col_title: st.title("Town Rates")
+    st.caption("Manage destination towns and their per-nug freight rates.")
+    with col_btns: st.button("➕ Add Town")
+
+    # Format data for Streamlit display
+    df_rates = pd.DataFrame(TOWN_RATES_DATA.items(), columns=["Town Name", "Rate (Per Nug)"])
+    df_rates["Rate (Per Nug)"] = df_rates["Rate (Per Nug)"].apply(lambda x: f"₹{x}") # Format currency
+
+    # Using interactive data editor for better usability
+    edited_rates = st.data_editor(df_rates, use_container_width=True, hide_index=True, num_rows="dynamic")
+    st.caption("*Use the table above to view town rates. Actual modification requires a database connection.*")
+
+else:
+    # Dummy Dashboard
+    st.title("SGC Smart Billing Dashboard")
+    st.write("Welcome to the Singh Golden Carrier Management System.")
+    st.info("Access billing and town rate data using the left navigation.")
+
+# --- FOOTER & DECORATION ---
+st.markdown('<div class="replit-badge">Demo made with Streamlit</div>', unsafe_allow_html=True)

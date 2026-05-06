@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGCBILL - Asset Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-5">
+    <div class="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold mb-6 text-blue-600">SGCBILL Asset Manager</h1>
+        
+        <div class="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <input type="text" id="assetName" placeholder="Asset Name (e.g. Laptop)" class="border p-2 rounded">
+            <input type="text" id="assetUser" placeholder="User Name" class="border p-2 rounded">
+            <button onclick="addAsset()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Add Asset</button>
+        </div>
+
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th class="p-3 border">ID</th>
+                    <th class="p-3 border">Asset Name</th>
+                    <th class="p-3 border">Assigned To</th>
+                    <th class="p-3 border">Status</th>
+                </tr>
+            </thead>
+            <tbody id="assetTableBody">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        let assets = JSON.parse(localStorage.getItem('assets')) || [];
+
+        function addAsset() {
+            const name = document.getElementById('assetName').value;
+            const user = document.getElementById('assetUser').value;
+            if(name && user) {
+                assets.push({ id: assets.length + 1, name, user, status: 'Active' });
+                localStorage.setItem('assets', JSON.stringify(assets));
+                renderTable();
+                document.getElementById('assetName').value = '';
+                document.getElementById('assetUser').value = '';
+            }
+        }
+
+        function renderTable() {
+            const body = document.getElementById('assetTableBody');
+            body.innerHTML = assets.map(a => `
+                <tr>
+                    <td class="p-3 border">${a.id}</td>
+                    <td class="p-3 border">${a.name}</td>
+                    <td class="p-3 border">${a.user}</td>
+                    <td class="p-3 border"><span class="bg-green-100 text-green-800 px-2 py-1 rounded text-sm">${a.status}</span></td>
+                </tr>
+            `).join('');
+        }
+        renderTable();
+    </script>
+</body>
+</html>
